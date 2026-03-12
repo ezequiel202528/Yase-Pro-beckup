@@ -88,7 +88,7 @@ function renderItens(itens) {
       return `
         <tr class="group text-[11px] border-b border-slate-800 hover:bg-slate-800/40 transition-colors whitespace-nowrap">
             <td class="p-3 text-slate-500">${index + 1}</td>
-            <td class="p-3 font-black text-amber-500 bg-amber-500/5">${item.selo_inmetro || "-"}</td>
+            <td class="p-3 font-black text-amber-500 bg-amber-500/5"> ${item.prefixo_selo ? item.prefixo_selo + '-' : ''}${item.selo_inmetro ?? "-"}</td>
             <td class="p-3 font-bold text-slate-200">${item.nr_cilindro || "S/N"}</td>
             <td class="p-3">${item.nbr || "-"}</td>
             <td class="p-3">${item.fabricante_id || "-"}</td>
@@ -159,7 +159,7 @@ async function registrarItem() {
     // CAPTURA O SELO DIRETAMENTE DO HTML (O campo amarelo que calculamos)
     const seloTexto = document.getElementById("proximo_selo_num")?.innerText;
     const seloNum = parseInt(seloTexto);
-    
+    const prefixo = window.prefixoAtualSelo || "";
     const checks = document.querySelectorAll(".custom-checkbox");
 
     // Captura os valores dos displays
@@ -170,6 +170,7 @@ async function registrarItem() {
     const dados = {
       os_number: window.currentOS || sessionStorage.getItem("currentOS"),
       selo_inmetro: isNaN(seloNum) ? null : seloNum, // GARANTE QUE O NÚMERO SEQUENCIAL VAI PARA O BANCO
+      prefixo_selo: prefixo,
       nr_cilindro: document.getElementById("nr_cilindro")?.value,
       num_patrimonio: document.getElementById("N-Patrimonio")?.value || document.getElementById("pallet")?.value,
 
@@ -247,13 +248,16 @@ async function registrarItem() {
       if (error) throw error;
     }
 
+   // ... código de salvamento anterior (update ou insert) ...
+
     // 3. FINALIZAÇÃO E ATUALIZAÇÃO DA TELA
+// ... final do registrarItem()
     await carregarItens();
     limparCamposAposRegistro();
     
-    // --- CORREÇÃO AQUI: CHAMA A FUNÇÃO CORRETA DO SEU ARQUIVO atualizarSelo.js ---
-    if (typeof monitorarLoteAtivo === "function") {
-      await monitorarLoteAtivo(); 
+    // Recarrega o painel amarelo para subtrair o selo usado
+    if (typeof sincronizarPainelSelos === "function") {
+        sincronizarPainelSelos();
     }
 
   } catch (err) {

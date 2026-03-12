@@ -3,57 +3,7 @@
  * atualizarSelo.js: Versão com Trava de Segurança em Tempo Real
  */
 
-async function monitorarLoteAtivo() {
-    try {
-        // 1. Busca a NF-e que está 'ABERTA'
-        const { data: lote, error: errorLote } = await _supabase
-            .from('rem_essas')
-            .select('*')
-            .eq('status_lote', 'ABERTO')
-            .maybeSingle();
 
-        if (errorLote || !lote) {
-            exibirDadosVazios();
-            aplicarBloqueioSistema(0);
-            return;
-        }
-
-        // 2. Conta quantos selos já foram usados NESTE INTERVALO da nota fiscal
-        const { count: usados, error: errCount } = await _supabase
-            .from('itens_os')
-            .select('*', { count: 'exact', head: true })
-            .gte('selo_inmetro', lote.selo_inicio)
-            .lte('selo_inmetro', lote.selo_fim);
-
-        const totalLote = parseInt(lote.qtd_selos);
-        const quantidadeUsada = usados || 0;
-        const restante = totalLote - quantidadeUsada;
-
-        // --- CORREÇÃO DO BUG DO SELO VAZIO ---
-        // Se usamos 0, o próximo é o selo_inicio.
-        // Se usamos 1, o próximo é o selo_inicio + 1.
-        const proximoSelo = parseInt(lote.selo_inicio) + quantidadeUsada;
-
-        // 3. ATUALIZAÇÃO DA INTERFACE
-        document.getElementById('lote_documento').innerText = `NF-e: ${lote.documento}`;
-        document.getElementById('proximo_selo_num').innerText = proximoSelo;
-        document.getElementById('qtd_restante_texto').innerText = restante;
-
-        // Barra de progresso
-        const porcentagem = (quantidadeUsada / totalLote) * 100;
-        const barra = document.getElementById('barra_progresso_selo');
-        if (barra) barra.style.width = `${porcentagem}%`;
-
-        // --- BLOQUEIO DINÂMICO ---
-        // Se o restante for 0, bloqueia IMEDIATAMENTE.
-        aplicarBloqueioSistema(restante);
-
-        return { proximoSelo, restante, lote };
-
-    } catch (err) {
-        console.error("Erro no monitoramento:", err);
-    }
-}
 
 function aplicarBloqueioSistema(quantidade) {
     const isBloqueado = quantidade <= 0;

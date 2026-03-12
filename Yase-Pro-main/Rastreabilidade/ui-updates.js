@@ -1,84 +1,54 @@
-/**
- * RESPONSABILIDADE: Gestão da Interface do Usuário (UI).
- */
+// 
+async function sincronizarPainelSelos() {
+    const elLote = document.getElementById('lote_documento');
+    const elSeloProx = document.getElementById('proximo_selo_num');
+    const elQtd = document.getElementById('qtd_restante_texto');
 
-// No ui-updates.js, atualize a função setLevel
-function setLevel(lvl) {
-    selectedLevel = lvl;
-    
-    // 1. Controle Visual: Aplica o fundo azul (indigo) apenas ao nível ativo
-    document.querySelectorAll('[data-level]').forEach((btn) => {
-        // Remove estado ativo
-        btn.classList.remove("bg-indigo-600", "text-white");
-        // Aplica estado inativo (escuro)
-        btn.classList.add("bg-slate-800/40", "text-slate-300");
-        
-        if (parseInt(btn.dataset.level) === lvl) {
-            btn.classList.add("bg-indigo-600", "text-white");
-            btn.classList.remove("bg-slate-800/40", "text-slate-300");
+    try {
+        // 1. Busca o lote ABERTO
+        const { data: lote, error } = await _supabase
+            .from('rem_essas')
+            .select('*')
+            .eq('status_lote', 'ABERTO')
+            .maybeSingle();
+
+        if (error || !lote) {
+            if (elLote) elLote.innerText = "NENHUM LOTE ATIVO";
+            return;
         }
-    });
 
-    // 2. Lógica de bloqueio dos campos de Ensaio Hidrostático (Nível 3)
-    const camposHidro = ["et_ensaio", "ep_ensaio", "ee_calculado", "ep_porcent_final"];
-    const grupoHidro = document.querySelector('.ensaios-group-red');
+        // 2. Conta no banco quantos itens já usaram esse prefixo
+        const { count: usados } = await _supabase
+            .from('itens_os')
+            .select('*', { count: 'exact', head: true })
+            .eq('prefixo_selo', lote.prefixo);
 
-    if (lvl === 3) {
-        if(grupoHidro) grupoHidro.style.opacity = "1";
-        camposHidro.forEach(id => {
-            const el = document.getElementById(id);
-            if(el) el.readOnly = false;
-        });
-    } else {
-        // Níveis 1 e 2 bloqueiam e limpam os campos técnicos de reteste
-        if(grupoHidro) grupoHidro.style.opacity = "0.4";
-        camposHidro.forEach(id => {
-            const el = document.getElementById(id);
-            if(el) {
-                el.readOnly = true;
-                el.value = ""; 
-            }
-        });
+        const totalLote = parseInt(lote.qtd_selos) || 0;
+        const quantidadeUsada = usados || 0;
+        
+        const proximoSelo = parseInt(lote.selo_inicio) + quantidadeUsada;
+        const restante = totalLote - quantidadeUsada;
+
+        // 3. Atualiza a Interface
+        if (elLote) elLote.innerHTML = `LOTE: <span class="text-amber-500 font-black">${lote.prefixo}</span>`;
+        if (elSeloProx) elSeloProx.innerText = proximoSelo;
+        if (elQtd) elQtd.innerText = restante;
+
+        window.prefixoAtualSelo = lote.prefixo;
+
+    } catch (err) {
+        console.error("Erro na sincronização:", err);
     }
 }
 
-// 3. Garantir Nível 2 por padrão ao abrir a tela
-window.addEventListener('DOMContentLoaded', () => {
-    setLevel(2); 
-});
-function setStatus(valor, elemento) {
-    // 1. Salva o valor no campo que vai para o banco de dados
-    document.getElementById("resultado_valor").value = valor;
+// Inicia e escuta mudanças
+window.addEventListener('load', () => {
+    sincronizarPainelSelos();
     
-    // 2. Limpa o estado visual de todos os botões no mesmo grupo
-    const botoes = elemento.parentElement.querySelectorAll('div');
-    botoes.forEach(btn => {
-        btn.classList.add('opacity-40');
-        btn.classList.remove('opacity-100', 'ring-2', 'ring-white', 'border-2');
-    });
-
-    // 3. Ativa o botão selecionado
-    elemento.classList.remove('opacity-40');
-    elemento.classList.add('opacity-100', 'border-2', 'border-white'); // Adicionei border-white para destacar
-}
-
-
-
-// modal de componentes subistituidos!
-function abrirModalComponentes() {
-    document.getElementById('modalComponentes').classList.remove('hidden');
-}
-
-function fecharModalComponentes() {
-    document.getElementById('modalComponentes').classList.add('hidden');
-    atualizarBadgeComponentes();
-}
-
-function atualizarBadgeComponentes() {
-    const selecionados = document.querySelectorAll('#container_checks_componentes input[type="checkbox"]:checked').length;
-    const badge = document.getElementById('badge-comp');
-    if (badge) {
-        badge.innerText = selecionados;
-        badge.classList.toggle('hidden', selecionados === 0);
-    }
-}
+    _supabase
+        .channel('mudanca_selos')
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'itens_os' }, () => {
+            setTimeout(sincronizarPainelSelos, 500);
+        })
+        .subscribe();
+});
